@@ -6,32 +6,36 @@
 
 #define MAX_SIZE 20
 
-// Struct for passing arguments to threads
-typedef struct {
-    int row;
-    int col;
-    int (*A)[MAX_SIZE];
-    int (*B)[MAX_SIZE];
-    int (*C)[MAX_SIZE];
-} ThreadArgs;
+typedef struct 
+{
+    int rows;
+    int cols;
+    int** mat;
+} matrix_t;
 
-// Global variables for matrices and their sizes
-int rowsA, colsA, rowsB, colsB;
-int matrixA[MAX_SIZE][MAX_SIZE];
-int matrixB[MAX_SIZE][MAX_SIZE];
-int matrixC_per_matrix[MAX_SIZE][MAX_SIZE];
-int matrixC_per_row[MAX_SIZE][MAX_SIZE];
-int matrixC_per_element[MAX_SIZE][MAX_SIZE];
+typedef struct 
+{
+    int currentRow;
+    int currentCol;
+    matrix_t* A;
+    matrix_t* B;
+    matrix_t* C;
+} thread_args_t;
+
+
 
 // Function to read matrix from file
-void readMatrix(FILE *file, int matrix[MAX_SIZE][MAX_SIZE], int *rows, int *cols) {
-    if (fscanf(file, "row=%d col=%d\n", rows, cols) != 2) {
+void readMatrix(FILE *file, matrix_t* mat) {
+    if (fscanf(file, "row=%d col=%d\n", &(mat->rows), &(mat->cols)) != 2) {
         perror("Error reading matrix dimensions");
         exit(1);
     }
-    for (int i = 0; i < *rows; i++) {
-        for (int j = 0; j < *cols; j++) {
-            if (fscanf(file, "%d", &matrix[i][j]) != 1) {
+    mat->mat = (int**)malloc(sizeof(int*) * mat->rows);
+
+    for (int i = 0; i < mat->rows; i++) {
+        mat->mat[i] = (int*)malloc(sizeof(int) * mat->cols);
+        for (int j = 0; j < mat->cols; j++) {
+            if (fscanf(file, "%d", &(mat->mat[i][j])) != 1) {
                 perror("Error reading matrix element");
                 exit(1);
             }
@@ -39,78 +43,38 @@ void readMatrix(FILE *file, int matrix[MAX_SIZE][MAX_SIZE], int *rows, int *cols
     }
 }
 
-// Function to perform matrix multiplication for a single element
-void *multiplyElement(void *args) {
-    ThreadArgs *threadArgs = (ThreadArgs *)args;
-    int row = threadArgs->row;
-    int col = threadArgs->col;
-    int result = 0;
-    for (int i = 0; i < colsA; i++) {
-        result += threadArgs->A[row][i] * threadArgs->B[i][col];
+// Function to perform matrix multiplication for the entire matrix
+void *multiplyMatrix(void *args) {
+    thread_args_t *data = (thread_args_t *)args;
+    data->C->rows = data->A->rows;
+    data->C->cols = data->B->cols;
+    data->C->mat = (int**)malloc(sizeof(int*) * data->C->rows);
+    for (int i = 0; i < data->A->rows; i++) {
+        data->C->mat[i] = (int*)malloc(sizeof(int) * data->C->cols);
+        for (int j = 0; j < data->B->cols; j++) {
+            int result = 0;
+            for (int k = 0; k < data->A->cols; k++) {
+                result += data->A->mat[i][k] * data->B->mat[k][j];
+            }
+            data->C->mat[i][j] = result;
+        }
     }
-    threadArgs->C[row][col] = result;
-    free(threadArgs); // Free threadArgs after usage
-    return NULL;
 }
 
 // Function to perform matrix multiplication for a row
 void *multiplyRow(void *args) {
-    ThreadArgs *threadArgs = (ThreadArgs *)args;
-    int row = threadArgs->row;
-    for (int j = 0; j < colsB; j++) {
+    thread_args_t *data = (thread_args_t *)args;
+    int row = data->currentRow;
+    for (int j = 0; j < data->B->cols; j++) {
         int result = 0;
-        for (int k = 0; k < colsA; k++) {
-            result += threadArgs->A[row][k] * threadArgs->B[k][j];
+        for (int k = 0; k < data->A->cols; k++) {
+            result += data->A->mat[row][k] * data->B->mat[k][j];
         }
-        threadArgs->C[row][j] = result;
+        data->C->mat[row][j] = result;
     }
-    free(threadArgs); // Free threadArgs after usage
+    free(data);
     return NULL;
 }
-
-// Function to perform matrix multiplication for the entire matrix
-void multiplyMatrix() {
-    for (int i = 0; i < rowsA; i++) {
-        for (int j = 0; j < colsB; j++) {
-            int result = 0;
-            for (int k = 0; k < colsA; k++) {
-                result += matrixA[i][k] * matrixB[k][j];
-            }
-            matrixC_per_matrix[i][j] = result;
-        }
-    }
-}
-
-// Function to create threads for matrix multiplication
-void createThreads(pthread_t *threads, void *(*threadFunction)(void *), int *threadCount, int (*C)[MAX_SIZE]) {
-    for (int i = 0; i < rowsA; i++) {
-        ThreadArgs *args = (ThreadArgs *)malloc(sizeof(ThreadArgs));
-        args->row = i;
-        args->col = 0;
-        args->A = matrixA;
-        args->B = matrixB;
-        args->C = C;
-        pthread_create(&threads[*threadCount], NULL, threadFunction, args);
-        (*threadCount)++;
-    }
-}
-
-// Function to create threads for matrix multiplication per element
-void createThreadsPerElement(pthread_t *threads, void *(*threadFunction)(void *), int *threadCount, int (*C)[MAX_SIZE]) {
-    for (int i = 0; i < rowsA; i++) {
-        for (int j = 0; j < colsB; j++) {
-            ThreadArgs *args = (ThreadArgs *)malloc(sizeof(ThreadArgs));
-            args->row = i;
-            args->col = j; // Set the column index
-            args->A = matrixA;
-            args->B = matrixB;
-            args->C = C;
-            pthread_create(&threads[*threadCount], NULL, threadFunction, args);
-            (*threadCount)++;
-        }
-    }
-}
-
 
 int main(int argc, char *argv[]) {
     // File names
@@ -152,81 +116,62 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
+    matrix_t A;
+    matrix_t B;
+    matrix_t C;
+
     // Read matrices from files
-    readMatrix(fileA, matrixA, &rowsA, &colsA);
-    readMatrix(fileB, matrixB, &rowsB, &colsB);
+    readMatrix(fileA, &A);
+    readMatrix(fileB, &B);
 
     // Close input files
     fclose(fileA);
     fclose(fileB);
 
-    // Initialize threads
-    pthread_t threads_per_matrix[MAX_SIZE];
-    pthread_t threads_per_row[MAX_SIZE];
-    pthread_t threads_per_element[MAX_SIZE];
-    int threadCount_per_matrix = 0;
-    int threadCount_per_row = 0;
-    int threadCount_per_element = 0;
 
     // Measure execution time for matrix multiplication per matrix
     clock_t start_per_matrix = clock();
-    multiplyMatrix();
+    pthread_t matrixThread;
+    thread_args_t *args = (thread_args_t*)malloc(sizeof(thread_args_t));
+    args->A = &A;
+    args->B = &B;
+    args->C = &C;
+    if (pthread_create(&matrixThread, NULL, multiplyMatrix, args) != 0)
+    {
+        perror("Error creating thread\n");
+        exit(EXIT_FAILURE);
+    }
+    pthread_join(matrixThread , NULL);
+    free(args);
     clock_t end_per_matrix = clock();
     double time_spent_per_matrix = ((double)(end_per_matrix - start_per_matrix)) / CLOCKS_PER_SEC;
 
-    // Measure execution time for matrix multiplication per row
-    clock_t start_per_row = clock();
-    createThreads(threads_per_row, multiplyRow, &threadCount_per_row, matrixC_per_row);
-    for (int i = 0; i < threadCount_per_row; i++) {
-        pthread_join(threads_per_row[i], NULL);
-    }
-    clock_t end_per_row = clock();
-    double time_spent_per_row = ((double)(end_per_row - start_per_row)) / CLOCKS_PER_SEC;
-
-    // Measure execution time for matrix multiplication per element
-    clock_t start_per_element = clock();
-    createThreads(threads_per_element, multiplyElement, &threadCount_per_element, matrixC_per_element);
-    for (int i = 0; i < threadCount_per_element; i++) {
-        pthread_join(threads_per_element[i], NULL);
-    }
-    clock_t end_per_element = clock();
-    double time_spent_per_element = ((double)(end_per_element - start_per_element)) / CLOCKS_PER_SEC;
-
     // Output matrices to files
     FILE *file_per_matrix = fopen(outputFile_per_matrix, "w");
-    FILE *file_per_row = fopen(outputFile_per_row, "w");
-    FILE *file_per_element = fopen(outputFile_per_element, "w");
-
-    if (file_per_matrix == NULL || file_per_row == NULL || file_per_element == NULL) {
+    
+    if (file_per_matrix == NULL) {
         perror("Error opening output file");
         return 1;
     }
 
     // Write matrices to files
-    fprintf(file_per_matrix, "Method: A thread per matrix\n");
-    fprintf(file_per_row, "Method: A thread per row\n");
-    fprintf(file_per_element, "Method: A thread per element\n");
+    fprintf(file_per_matrix, "Method: A thread per matrix\nrow=%d col=%d\n", C.rows, C.cols);
 
-    for (int i = 0; i < rowsA; i++) {
-        for (int j = 0; j < colsB; j++) {
-            fprintf(file_per_matrix, "%d ", matrixC_per_matrix[i][j]);
-            fprintf(file_per_row, "%d ", matrixC_per_row[i][j]);
-            fprintf(file_per_element, "%d ", matrixC_per_element[i][j]);
+    for (int i = 0; i < A.rows; i++) {
+        for (int j = 0; j < B.cols; j++) {
+            fprintf(file_per_matrix, "%d ", C.mat[i][j]);
         }
         fprintf(file_per_matrix, "\n");
-        fprintf(file_per_row, "\n");
-        fprintf(file_per_element, "\n");
     }
 
     // Close output files
     fclose(file_per_matrix);
-    fclose(file_per_row);
-    fclose(file_per_element);
+
+    printf("Number of threads created per matrix: %d\n", 1);
+
 
     // Print execution times
     printf("Execution time per matrix: %f seconds\n", time_spent_per_matrix);
-    printf("Execution time per row: %f seconds\n", time_spent_per_row);
-    printf("Execution time per element: %f seconds\n", time_spent_per_element);
-
+    
     return 0;
 }
