@@ -74,7 +74,28 @@ void *multiplyRow(void *args) {
         }
         data->C->mat[row][j] = result;
     }
+    free(data);
     return NULL;
+}
+
+// Function to perform matrix multiplication for a single element
+void *multiplyElement(void *args) {
+    thread_args_t* data = (thread_args_t*)args;
+    int row = data->currentRow;
+    int col = data->currentCol;
+    
+    int result = 0;
+    for (int i = 0; i < data->A->cols; i++) {
+        result += data->A->mat[row][i] * data->B->mat[i][col];
+    }
+    //printf("%d\n", result);
+    data->C->mat[row][col] = result;
+    free(data);
+    return NULL;
+}
+
+void benchmark() {
+    
 }
 
 int multiplyMatrixBenchmark(matrix_t* A, matrix_t* B, matrix_t* C, char* outputFile) {
@@ -122,6 +143,122 @@ int multiplyMatrixBenchmark(matrix_t* A, matrix_t* B, matrix_t* C, char* outputF
     // Print execution times
     printf("Execution time per matrix: %f seconds\n", time_spent_per_matrix);
     
+}
+
+
+int multiplyRowsBenchmark(matrix_t* A, matrix_t* B, matrix_t* C, char* outputFile) {
+    clock_t start_per_row = clock();
+    C->rows = A->rows;
+    C->cols = B->cols;
+    C->mat = (int**)malloc(sizeof(int*) * C->rows);
+    
+    pthread_t threads_per_row[C->rows];
+    int threadCount_per_row = 0; 
+    
+    for (int i = 0; i < C->rows; i++) {
+        thread_args_t* args = (thread_args_t*)malloc(sizeof(thread_args_t));
+        args->currentRow = i;
+        args->currentCol = 0;
+        args->A = A;
+        args->B = B;
+        args->C = C;
+        
+        if (pthread_create(&threads_per_row[threadCount_per_row], NULL, multiplyRow, args) != 0)
+        {
+            perror("Error creating thread\n");
+            exit(EXIT_FAILURE);
+        }
+        threadCount_per_row++;
+    }
+    for (int i = 0; i < threadCount_per_row; i++) {
+        pthread_join(threads_per_row[i], NULL);
+    }
+
+    clock_t end_per_row = clock();
+    double time_spent_per_row = ((double)(end_per_row - start_per_row)) / CLOCKS_PER_SEC;
+
+
+    FILE *file_per_row = fopen(outputFile, "w");
+
+    if (file_per_row == NULL) {
+        perror("Error opening output file");
+        return 1;
+    }
+
+    fprintf(file_per_row, "Method: A thread per row\n");
+
+    fprintf(file_per_row, "row=%d col=%d\n", C->rows, C->cols);
+
+    for (int i = 0; i < C->rows; i++) {
+        for (int j = 0; j < C->cols; j++) {
+            fprintf(file_per_row, "%d ", C->mat[i][j]);
+        }
+        fprintf(file_per_row, "\n");
+    }
+    fclose(file_per_row);
+    printf("Number of threads created per row: %d\n", threadCount_per_row);
+    // Print execution times
+    printf("Execution time per matrix: %f seconds\n", time_spent_per_row);
+}
+
+int multiplyElementsBenchmark(matrix_t* A, matrix_t* B, matrix_t* C, char* outputFile) {
+    clock_t start_per_element = clock();
+    C->rows = A->rows;
+    C->cols = B->cols;
+    C->mat = (int**)malloc(sizeof(int*) * C->rows);
+    for (int i = 0; i < C->rows; i++) {
+        C->mat[i] = (int*)malloc(sizeof(int) * C->cols);
+    }
+    
+    pthread_t threads_per_row[(C->rows) * (C->cols)];
+    int threadCount_per_element = 0; 
+    
+    for (int i = 0; i < C->rows; i++) {
+        for (int j = 0; j < C->cols; j++) {
+            thread_args_t* args = (thread_args_t*)malloc(sizeof(thread_args_t));
+            args->currentRow = i;
+            args->currentCol = j;
+            args->A = A;
+            args->B = B;
+            args->C = C;
+            
+            if (pthread_create(&threads_per_row[threadCount_per_element], NULL, multiplyElement, args) != 0)
+            {
+                perror("Error creating thread\n");
+                exit(EXIT_FAILURE);
+            }
+            threadCount_per_element++;
+        }
+    }
+    for (int i = 0; i < threadCount_per_element; i++) {
+        pthread_join(threads_per_row[i], NULL);
+    }
+
+    clock_t end_per_element = clock();
+    double time_spent_per_matrix = ((double)(end_per_element - start_per_element)) / CLOCKS_PER_SEC;
+
+
+    FILE *file_per_element = fopen(outputFile, "w");
+
+    if (file_per_element == NULL) {
+        perror("Error opening output file");
+        return 1;
+    }
+
+    fprintf(file_per_element, "Method: A thread per element\n");
+
+    fprintf(file_per_element, "row=%d col=%d\n", C->rows, C->cols);
+
+    for (int i = 0; i < C->rows; i++) {
+        for (int j = 0; j < C->cols; j++) {
+            fprintf(file_per_element, "%d ", C->mat[i][j]);
+        }
+        fprintf(file_per_element, "\n");
+    }
+    fclose(file_per_element);
+    printf("Number of threads created per element: %d\n", threadCount_per_element);
+    // Print execution times
+    printf("Execution time per element: %f seconds\n", time_spent_per_matrix);
 }
 
 int main(int argc, char *argv[]) {
@@ -176,60 +313,9 @@ int main(int argc, char *argv[]) {
     fclose(fileA);
     fclose(fileB);
 
-    //multiplyMatrixBenchmark(&A, &B, &C, outputFile_per_matrix);
-    clock_t start_per_row = clock();
-    C.rows = A.rows;
-    C.cols = B.cols;
-    C.mat = (int**)malloc(sizeof(int*) * C.rows);
-    
-    pthread_t threads_per_row[C.rows];
-    int threadCount_per_row = 0; 
-    
-    for (int i = 0; i < C.rows; i++) {
-        thread_args_t* args = (thread_args_t*)malloc(sizeof(thread_args_t));
-        args->currentRow = i;
-        args->currentCol = 0;
-        args->A = &A;
-        args->B = &B;
-        args->C = &C;
-        
-        if (pthread_create(&threads_per_row[threadCount_per_row], NULL, multiplyRow, args) != 0)
-        {
-            perror("Error creating thread\n");
-            exit(EXIT_FAILURE);
-        }
-        threadCount_per_row++;
-    }
-    for (int i = 0; i < threadCount_per_row; i++) {
-        pthread_join(threads_per_row[i], NULL);
-    }
-
-    clock_t end_per_row = clock();
-    double time_spent_per_matrix = ((double)(end_per_row - start_per_row)) / CLOCKS_PER_SEC;
-
-
-    FILE *file_per_row = fopen(outputFile_per_row, "w");
-
-    if (file_per_row == NULL) {
-        perror("Error opening output file");
-        return 1;
-    }
-
-    fprintf(file_per_row, "Method: A thread per row\n");
-
-    fprintf(file_per_row, "row=%d col=%d\n", C.rows, C.cols);
-
-    for (int i = 0; i < C.rows; i++) {
-        for (int j = 0; j < C.cols; j++) {
-            fprintf(file_per_row, "%d ", C.mat[i][j]);
-        }
-        fprintf(file_per_row, "\n");
-    }
-    fclose(file_per_row);
-    printf("Number of threads created per row: %d\n", threadCount_per_row);
-    // Print execution times
-    printf("Execution time per matrix: %f seconds\n", time_spent_per_matrix);
-    
+    multiplyMatrixBenchmark(&A, &B, &C, outputFile_per_matrix);
+    multiplyRowsBenchmark(&A, &B, &C, outputFile_per_row);
+    multiplyElementsBenchmark(&A, &B, &C, outputFile_per_element);
 
     return 0;
 }
