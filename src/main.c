@@ -69,7 +69,7 @@ int main(int argc, char *argv[]) {
 
     if (fileA == NULL || fileB == NULL) {
         perror("Error opening input file");
-        return 1;
+        exit(EXIT_FAILURE);
     }
 
     // Read matrices from files
@@ -79,6 +79,11 @@ int main(int argc, char *argv[]) {
     // Close input files
     fclose(fileA);
     fclose(fileB);
+
+    if (A.cols != B.rows){
+        fprintf(stderr, "Wrong matrix dimensions! Exiting...\n");
+        exit(EXIT_FAILURE);
+    }
 
     // Benchmarking matrix multiplication methods
     benchmark(multiplyMatrix, &matArgs);
