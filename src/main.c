@@ -116,6 +116,19 @@ int main(int argc, char *argv[]) {
     free(matArgs.outputFile);
     free(rowArgs.outputFile);
     free(elemArgs.outputFile);
+    
+    // Free memory allocated for matrices
+    for (int i = 0; i < A.rows; i++) {
+        free(A.mat[i]);
+        free(C_mat.mat[i]);
+        free(C_row.mat[i]);
+        free(C_elem.mat[i]);
+    }
+    for (int i = 0; i < B.rows; i++) {
+        free(B.mat[i]);
+    }
+    free(A.mat);
+    free(B.mat);
     free(C_mat.mat);
     free(C_row.mat);
     free(C_elem.mat);
