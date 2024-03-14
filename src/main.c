@@ -116,6 +116,9 @@ int main(int argc, char *argv[]) {
     free(matArgs.outputFile);
     free(rowArgs.outputFile);
     free(elemArgs.outputFile);
+    free(C_mat.mat);
+    free(C_row.mat);
+    free(C_elem.mat);
 
     return 0;
 }
