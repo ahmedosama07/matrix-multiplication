@@ -69,6 +69,7 @@ int main(int argc, char *argv[]) {
 
     if (fileA == NULL || fileB == NULL) {
         perror("Error opening input file");
+        fprintf(stderr, "Usage:\n\t.\\matMultp.o a b c\n\t\t  - a : Input matrix name\n\t\t  - b : Input matrix name\n\t\t  - c : Output matrix name\n");
         exit(EXIT_FAILURE);
     }
 
